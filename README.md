@@ -16,9 +16,9 @@ conda activate Segmenter
 You should see `(Segmenter)` at the left side of the bottom line in the terminal/prompt window.
 
 4. Download the code:
-
-    git clone https://github.com/Mullans/ImageSegmenter
-    
+```
+git clone https://github.com/Mullans/ImageSegmenter
+```    
 5. Open the project and run the code:
 ```
 cd ImageSegmenter
