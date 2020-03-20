@@ -12,6 +12,7 @@ from .SegmenterView import ImageSegmenterView
 from .CustomClasses import LabeledComboBox, LabeledSlider, LabeledSpinBox, ClickableLineEdit
 from .spinner import WaitingSpinner
 
+
 def ensure_dir(*paths):
     full_path = ''
     for path in paths:
@@ -46,6 +47,16 @@ class SegmenterWidget(QWidget):
             'Inner Wound',
             'Outer Wound'
         ]
+        
+        # Load last used image directory
+        self.meta_file = os.path.join(os.path.dirname(__file__), 'meta.txt')
+        if os.path.exists(self.meta_file):
+            with open(self.meta_file, 'r') as f:
+                last_active_image_dir = f.readline().strip()
+                print(last_active_image_dir)
+                if os.path.exists(last_active_image_dir):
+                    self.active_image_dir = last_active_image_dir
+                    
         # Set up Segmenter Widget
         self.viewer = ImageSegmenterView(self)
 
@@ -69,6 +80,9 @@ class SegmenterWidget(QWidget):
         self.next_btn = QToolButton(self)
         self.next_btn.setText('Next Image')
         self.next_btn.clicked.connect(self.goto_next)
+        self.skip_btn = QToolButton(self)
+        self.skip_btn.setText('Next Unlabeled Image')
+        self.skip_btn.clicked.connect(self.skipto_next)
 
         ## Sliders
         self.opacity_slider = LabeledSlider('Mask Opacity: {}%',
@@ -154,6 +168,7 @@ class SegmenterWidget(QWidget):
         BottomToolbar.addWidget(self.image_idx)
         BottomToolbar.addWidget(self.prev_btn)
         BottomToolbar.addWidget(self.next_btn)
+        BottomToolbar.addWidget(self.skip_btn)
         BottomStack.addLayout(BottomToolbar)
 
         RightToolbar = QVBoxLayout()
@@ -186,9 +201,17 @@ class SegmenterWidget(QWidget):
         QApplication.quit()
 
     def set_image_dir(self):
-        selected_dir = QFileDialog.getExistingDirectory(self, self.tr("Select Image Directory"), None, QFileDialog.ShowDirsOnly)
-        if len(selected_dir) > 0:
+        dialog = QFileDialog(self, 'Select Image Directory')
+        dialog.setFileMode(QFileDialog.ExistingFile)
+        dialog.setNameFilters(["Images (*.png *.jpg)", "Any Files (*)"])
+        dialog.setViewMode(QFileDialog.List)
+        if dialog.exec():
+            selected_dir = dialog.selectedFiles()[0]
+            if not os.path.isdir(selected_dir):
+                selected_dir = os.path.dirname(selected_dir)
             self.active_image_dir = selected_dir
+            with open(self.meta_file, 'w') as f:
+                f.write(self.active_image_dir)
             self.label_dir = ensure_dir(os.path.join(self.active_image_dir, self.label_options.currentText().replace(' ', '_')))
             image_paths = glob.glob(os.path.join(self.active_image_dir, '*.png')) + glob.glob(os.path.join(self.active_image_dir, '*.jpg'))
             self.src_paths = sorted(image_paths)
@@ -236,12 +259,34 @@ class SegmenterWidget(QWidget):
                 self.viewer.setSegLayer(QPixmap(self.current_label_path))
             self.prev_idx = idx
 
+    def skipto_next(self):
+        print(self.current_idx)
+        if self.current_idx < len(self.src_paths):
+            check_idx = self.current_idx
+            print(check_idx)
+            found = False
+            while check_idx < len(self.src_paths):
+                print(check_idx, len(self.src_paths))
+                image_name, suff = os.path.basename(self.src_paths[check_idx]).rsplit('.', 1)
+                label_path = os.path.join(self.label_dir, image_name + '_label.png')
+                if os.path.exists(label_path):
+                    check_idx += 1
+                    continue
+                else:
+                    found = True
+                    break
+            if found:
+                self.image_idx.setValue(check_idx)
+            else:
+                return QMessageBox.warning(self, "Segmenter Tool", "No unlabeled images found for label type '{}'".format(self.label_options.currentText()),
+                                   QMessageBox.Ok, QMessageBox.Ok)                
+
     def goto_next(self):
         if self.prev_idx < len(self.src_paths):
             self.image_idx.setValue(self.prev_idx + 1)
 
     def goto_previous(self):
-        if self.prev_idx > 0:
+        if self.prev_idx > 1:
             self.image_idx.setValue(self.prev_idx - 1)
 
     def saveSegmentation(self):
