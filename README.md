@@ -4,28 +4,34 @@ This is a python-based segmenter tool for png and jpg images.
 
 ## To set up environment
 1. Install [Anaconda](https://www.anaconda.com/distribution/#download-section)
-2. On Mac/Linux open **Terminal**. On Windows open **Anaconda Prompt**.
-3. Enter the following to create the environment:
-
+2. On Mac/Linux open the **Terminal** application. On Windows open **Anaconda Prompt** by typing *Anaconda* in the windows search box and selecting it from the results.
+3. Enter the following to create an Anaconda environment named Segmenter:
 ```
 conda create --name Segmenter -c conda-forge python=3.7 opencv=3.4.2 pyside2
-    
+```
+When asked to proceed, enter `y` and press return to confirm installing the packages.
+
+4. Activate the Segmenter environment you just created:
+
+``` 
 conda activate Segmenter
 ```
 
-You should see `(Segmenter)` at the left side of the bottom line in the terminal/prompt window.
+If this asks you to install developer tools, enter `y` and press return. This will either happen the first time or not at all.
 
-4. Download the code:
+You should see `(Segmenter)` at the left side of the bottom line in the terminal/prompt window. This means that the Segmenter environment is currently active.
+
+5. Download the code:
 ```
 git clone https://github.com/Mullans/ImageSegmenter
 ```    
-5. Open the project and run the code:
+6. Open the project directory and run the code:
 ```
 cd ImageSegmenter
     
 python main.py
 ```
-When running after the first time you only need steps 2 and 5.
+When running after the first time you only need steps 2, 4 and 6.
 
 
 ## TLDR
