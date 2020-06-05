@@ -47,7 +47,7 @@ class SegmenterWidget(QWidget):
             'Inner Wound',
             'Outer Wound'
         ]
-        
+
         # Load last used image directory
         self.meta_file = os.path.join(os.path.dirname(__file__), 'meta.txt')
         if os.path.exists(self.meta_file):
@@ -56,7 +56,7 @@ class SegmenterWidget(QWidget):
                 print(last_active_image_dir)
                 if os.path.exists(last_active_image_dir):
                     self.active_image_dir = last_active_image_dir
-                    
+
         # Set up Segmenter Widget
         self.viewer = ImageSegmenterView(self)
 
@@ -276,10 +276,10 @@ class SegmenterWidget(QWidget):
                     found = True
                     break
             if found:
-                self.image_idx.setValue(check_idx)
+                self.image_idx.setValue(check_idx + 1)
             else:
                 return QMessageBox.warning(self, "Segmenter Tool", "No unlabeled images found for label type '{}'".format(self.label_options.currentText()),
-                                   QMessageBox.Ok, QMessageBox.Ok)                
+                                   QMessageBox.Ok, QMessageBox.Ok)
 
     def goto_next(self):
         if self.prev_idx < len(self.src_paths):
