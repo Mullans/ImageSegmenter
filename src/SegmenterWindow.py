@@ -1,5 +1,6 @@
 import cv2
 import glob
+import imghdr
 import os
 import tempfile
 from pathlib import Path
@@ -25,6 +26,7 @@ def ensure_dir(*paths):
             os.mkdir(full_path)
     return full_path
 
+
 def QImage_to_CVMat(image):
     image = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
     width = image.width()
@@ -39,6 +41,7 @@ class SegmenterWidget(QWidget):
     def __init__(self):
         super(SegmenterWidget, self).__init__()
         self.active_image_dir = None
+        self.active_label_dir = None
         self.src_paths = []
         self.current_idx = None
         self.prev_idx = 0
@@ -53,11 +56,14 @@ class SegmenterWidget(QWidget):
         if os.path.exists(self.meta_file):
             with open(self.meta_file, 'r') as f:
                 last_active_image_dir = f.readline().strip()
-                print(last_active_image_dir)
+                # print(last_active_image_dir)
                 if os.path.exists(last_active_image_dir):
                     self.active_image_dir = last_active_image_dir
 
         # Set up Segmenter Widget
+        self.image_title = QLineEdit(self)
+        self.image_title.setText('--None--')
+        self.image_title.setReadOnly(True)
         self.viewer = ImageSegmenterView(self)
 
         # Bottom Toolbar Widgets
@@ -68,6 +74,12 @@ class SegmenterWidget(QWidget):
         self.select_dir_btn.clicked.connect(self.set_image_dir)
         self.current_dir = ClickableLineEdit(self, text='--None--', readOnly=True)
         self.current_dir.clicked.connect(self.set_image_dir)
+
+        self.select_label_dir_btn = QToolButton(self)
+        self.select_label_dir_btn.setText('Set Label Folder')
+        self.select_label_dir_btn.clicked.connect(self.set_label_dir)
+        self.current_label_dir = ClickableLineEdit(self, text='--None--', readOnly=True)
+        self.current_label_dir.clicked.connect(self.set_label_dir)
 
         self.prev_btn = QToolButton(self)
         self.prev_btn.setText('Previous Image')
@@ -83,6 +95,9 @@ class SegmenterWidget(QWidget):
         self.skip_btn = QToolButton(self)
         self.skip_btn.setText('Next Unlabeled Image')
         self.skip_btn.clicked.connect(self.skipto_next)
+        self.skip_label_btn = QToolButton(self)
+        self.skip_label_btn.setText('Next Labeled Image  ')
+        self.skip_label_btn.clicked.connect(self.skipto_next_label)
 
         ## Sliders
         self.opacity_slider = LabeledSlider('Mask Opacity: {}%',
@@ -153,22 +168,33 @@ class SegmenterWidget(QWidget):
         self.grabcut_button.setText('Run &GrabCut Segmenter')
         self.grabcut_button.clicked.connect(self.run_grabcut)
 
-
-
         # Arrange layout
         MainLayout = QVBoxLayout(self)
 
         BottomStack = QVBoxLayout()
 
-
         BottomToolbar = QHBoxLayout()
         BottomToolbar.setAlignment(Qt.AlignLeft)
-        BottomToolbar.addWidget(self.select_dir_btn)
-        BottomToolbar.addWidget(self.current_dir)
+        Selectors = QVBoxLayout()
+        ImageDirSelector = QHBoxLayout()
+        ImageDirSelector.addWidget(self.select_dir_btn)
+        ImageDirSelector.addWidget(self.current_dir)
+        Selectors.addLayout(ImageDirSelector)
+        LabelDirSelector = QHBoxLayout()
+        LabelDirSelector.addWidget(self.select_label_dir_btn)
+        LabelDirSelector.addWidget(self.current_label_dir)
+        Selectors.addLayout(LabelDirSelector)
+
+        BottomToolbar.addLayout(Selectors)
         BottomToolbar.addWidget(self.image_idx)
         BottomToolbar.addWidget(self.prev_btn)
         BottomToolbar.addWidget(self.next_btn)
-        BottomToolbar.addWidget(self.skip_btn)
+        Skippers = QVBoxLayout()
+        Skippers.addWidget(self.skip_btn)
+        Skippers.addWidget(self.skip_label_btn)
+
+        # BottomToolbar.addWidget(self.skip_btn)
+        BottomToolbar.addLayout(Skippers)
         BottomStack.addLayout(BottomToolbar)
 
         RightToolbar = QVBoxLayout()
@@ -179,14 +205,17 @@ class SegmenterWidget(QWidget):
         RightToolbar.addWidget(self.undo_btn)
         RightToolbar.addWidget(self.redo_btn)
         RightToolbar.addStretch()
-        self.gc_spinner.setFixedHeight(0)
-        RightToolbar.addWidget(self.gc_spinner)
+        # self.gc_spinner.setFixedHeight(0)
+        # RightToolbar.addWidget(self.gc_spinner)
         RightToolbar.addWidget(self.grabcut_button)
         RightToolbar.addWidget(self.save_button)
         RightToolbar.addWidget(self.clear_button)
 
         TopLayout = QHBoxLayout()
-        TopLayout.addWidget(self.viewer)
+        ImageLayout = QVBoxLayout()
+        ImageLayout.addWidget(self.image_title)
+        ImageLayout.addWidget(self.viewer)
+        TopLayout.addLayout(ImageLayout)
         TopLayout.addLayout(RightToolbar)
 
         MainLayout.addLayout(TopLayout)
@@ -202,22 +231,58 @@ class SegmenterWidget(QWidget):
 
     def set_image_dir(self):
         dialog = QFileDialog(self, 'Select Image Directory')
-        dialog.setFileMode(QFileDialog.ExistingFile)
-        dialog.setNameFilters(["Images (*.png *.jpg)", "Any Files (*)"])
+        dialog.setFileMode(QFileDialog.Directory)
+        dialog.setNameFilters(["Any Files (*)"])
         dialog.setViewMode(QFileDialog.List)
         if dialog.exec():
             selected_dir = dialog.selectedFiles()[0]
             if not os.path.isdir(selected_dir):
                 selected_dir = os.path.dirname(selected_dir)
             self.active_image_dir = selected_dir
-            with open(self.meta_file, 'w') as f:
-                f.write(self.active_image_dir)
-            self.label_dir = ensure_dir(os.path.join(self.active_image_dir, self.label_options.currentText().replace(' ', '_')))
-            image_paths = glob.glob(os.path.join(self.active_image_dir, '*.png')) + glob.glob(os.path.join(self.active_image_dir, '*.jpg'))
+            with open(self.meta_file, 'a+') as f:
+                f.write('Set Image Dir: ' + self.active_image_dir + '\n')
+            if self.active_label_dir is None:
+                self.active_label_dir = self.active_image_dir
+                self.current_label_dir.setText(self.active_label_dir)
+                with open(self.meta_file, 'a+') as f:
+                    f.write('Set Label Dir: ' + self.active_label_dir + '\n')
+            self.label_dir = ensure_dir(os.path.join(self.active_label_dir, self.label_options.currentText().replace(' ', '_')))
+            # image_paths = glob.glob(os.path.join(self.active_image_dir, '*.png')) + glob.glob(os.path.join(self.active_image_dir, '*.jpg'))
+            paths = glob.glob(os.path.join(self.active_image_dir, '*'))
+            image_paths = []
+            for path in paths:
+                if os.path.isdir(path):
+                    continue
+                if imghdr.what(path) in ['jpeg', 'png', 'jpg']:
+                    image_paths.append(path)
             self.src_paths = sorted(image_paths)
             self.current_dir.setText(self.active_image_dir)
             self.image_idx.setRange(1, len(self.src_paths))
             self.goto_image(1)
+
+    def set_label_dir(self):
+        dialog = QFileDialog(self, 'Select Label Directory')
+        dialog.setFileMode(QFileDialog.Directory)
+        dialog.setNameFilters(["Any Files (*)"])
+        dialog.setViewMode(QFileDialog.List)
+        if dialog.exec():
+            selected_dir = dialog.selectedFiles()[0]
+            if not os.path.isdir(selected_dir):
+                selected_dir = os.path.dirname(selected_dir)
+            self.active_label_dir = selected_dir
+            self.current_label_dir.setText(self.active_label_dir)
+            with open(self.meta_file, 'a+') as f:
+                f.write('Set Label Dir: ' + self.active_label_dir + '\n')
+            self.label_dir = ensure_dir(os.path.join(self.active_label_dir, self.label_options.currentText().replace(' ', '_')))
+            if self.active_image_dir is not None:
+                image_name = os.path.basename(self.src_paths[self.current_idx])
+                image_name, suff = os.path.splitext(image_name)
+                self.current_label_path = os.path.join(self.label_dir, image_name + '_label.png')
+                if os.path.exists(self.current_label_path):
+                    self.viewer.setSegLayer(QPixmap(self.current_label_path))
+                else:
+                    self.viewer.resetSegLayer()
+                self.viewer.changed = False
 
     def label_changed(self, value):
         if len(self.src_paths) > 0:
@@ -230,8 +295,9 @@ class SegmenterWidget(QWidget):
                     return
                 elif result == QMessageBox.Discard:
                     pass
-            self.label_dir = ensure_dir(os.path.join(self.active_image_dir, value.replace(' ', '_')))
-            image_name, suff = os.path.basename(self.src_paths[self.current_idx]).rsplit('.', 1)
+            self.label_dir = ensure_dir(os.path.join(self.active_label_dir, value.replace(' ', '_')))
+            image_name = os.path.basename(self.src_paths[self.current_idx])
+            image_name, suff = os.path.splitext(image_name)
             self.current_label_path = os.path.join(self.label_dir, image_name + '_label.png')
             if os.path.exists(self.current_label_path):
                 self.viewer.setSegLayer(QPixmap(self.current_label_path))
@@ -253,21 +319,24 @@ class SegmenterWidget(QWidget):
             self.viewer.clear_history()
             self.current_idx = idx - 1
             self.viewer.setPhoto(QPixmap(self.src_paths[self.current_idx]))
-            image_name, suff = os.path.basename(self.src_paths[self.current_idx]).rsplit('.', 1)
+            image_name = os.path.basename(self.src_paths[self.current_idx])
+            image_name, suff = os.path.splitext(image_name)
+            self.image_title.setText(image_name)
             self.current_label_path = os.path.join(self.label_dir, image_name + '_label.png')
             if os.path.exists(self.current_label_path):
                 self.viewer.setSegLayer(QPixmap(self.current_label_path))
             self.prev_idx = idx
 
     def skipto_next(self):
-        print(self.current_idx)
+        # print(self.current_idx)
         if self.current_idx < len(self.src_paths):
             check_idx = self.current_idx
-            print(check_idx)
+            # print(check_idx)
             found = False
             while check_idx < len(self.src_paths):
-                print(check_idx, len(self.src_paths))
-                image_name, suff = os.path.basename(self.src_paths[check_idx]).rsplit('.', 1)
+                # print(check_idx, len(self.src_paths))
+                image_name = os.path.basename(self.src_paths[current_idx])
+                image_name, suff = os.path.splitext(image_name)
                 label_path = os.path.join(self.label_dir, image_name + '_label.png')
                 if os.path.exists(label_path):
                     check_idx += 1
@@ -279,6 +348,28 @@ class SegmenterWidget(QWidget):
                 self.image_idx.setValue(check_idx + 1)
             else:
                 return QMessageBox.warning(self, "Segmenter Tool", "No unlabeled images found for label type '{}'".format(self.label_options.currentText()),
+                                   QMessageBox.Ok, QMessageBox.Ok)
+
+    def skipto_next_label(self):
+        if self.current_idx < len(self.src_paths):
+            check_idx = self.current_idx + 1
+            found = False
+            while check_idx < len(self.src_paths):
+                image_name = os.path.basename(self.src_paths[check_idx])
+                print(image_name)
+                image_name, suff = os.path.splitext(image_name)
+                label_path = os.path.join(self.label_dir, image_name + '_label.png')
+                print(label_path, os.path.exists(label_path))
+                if os.path.exists(label_path):
+                    found = True
+                    break
+                else:
+                    check_idx += 1
+                    continue
+            if found:
+                self.image_idx.setValue(check_idx + 1)
+            else:
+                return QMessageBox.warning(self, "Segmenter Tool", "No labeled images found for label type '{}'".format(self.label_options.currentText()),
                                    QMessageBox.Ok, QMessageBox.Ok)
 
     def goto_next(self):
@@ -297,7 +388,7 @@ class SegmenterWidget(QWidget):
 
     def run_grabcut(self):
         if self.viewer.hasPhoto():
-            self.gc_spinner.start()
+            # self.gc_spinner.start()
             image = QImage_to_CVMat(QPixmap(self.src_paths[self.current_idx]).toImage())[:, :, :3]
             segmentation = QImage_to_CVMat(self.viewer.seg_image)
             pfg, fg, bg, pbg = np.split(segmentation / 255, segmentation.shape[-1], axis=-1)
@@ -310,7 +401,7 @@ class SegmenterWidget(QWidget):
                 elif not has_fg:
                     message = 'You must select some foreground or possible foreground.'
                 x = QMessageBox.critical(self, "Segmenter Tool", message, QMessageBox.Ok)
-                self.gc_spinner.stop()
+                # self.gc_spinner.stop()
                 return
 
             mask = (cv2.GC_FGD * fg + cv2.GC_BGD * bg + cv2.GC_PR_FGD * pfg + cv2.GC_PR_BGD * pbg).astype(np.uint8)
@@ -330,7 +421,7 @@ class SegmenterWidget(QWidget):
             self.viewer.changed = True
             os.remove(temp_png)
             os.removedirs(tempdir)
-            self.gc_spinner.stop()
+            # self.gc_spinner.stop()
 
     def show_save_warning(self):
         return QMessageBox.warning(self, "Segmenter Tool", 'This segmentation has been modified.\nDo you want to save your changes?',
