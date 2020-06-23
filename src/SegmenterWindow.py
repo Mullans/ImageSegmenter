@@ -11,7 +11,6 @@ from PySide2.QtGui import QPixmap, QImage
 from PySide2.QtCore import Slot, Qt
 from .SegmenterView import ImageSegmenterView
 from .CustomClasses import LabeledComboBox, LabeledSlider, LabeledSpinBox, ClickableLineEdit
-from .spinner import WaitingSpinner
 
 
 def ensure_dir(*paths):
@@ -108,11 +107,11 @@ class SegmenterWidget(QWidget):
                                             starting_value=50)
         self.opacity_slider.valueChanged.connect(self.viewer.set_opacity)
         self.pen_size_slider = LabeledSlider('Pen Size: {}px',
-                                             single_step=1,
-                                             page_step=5,
+                                             single_step=5,
+                                             page_step=10,
                                              minimum=1,
-                                             maximum=100,
-                                             starting_value=8)
+                                             maximum=500,
+                                             starting_value=30)
         self.pen_size_slider.valueChanged.connect(self.viewer.set_pen_size)
 
         # Right Toolbar
@@ -163,10 +162,13 @@ class SegmenterWidget(QWidget):
         self.clear_button.setText('Clear Mask')
         self.clear_button.clicked.connect(self.viewer.resetSegLayer)
 
-        self.gc_spinner = WaitingSpinner(self, opacity=1, radius=20, line_width=3, line_length=10)
         self.grabcut_button = QToolButton(self)
         self.grabcut_button.setText('Run &GrabCut Segmenter')
         self.grabcut_button.clicked.connect(self.run_grabcut)
+
+        self.hide_image_button = QToolButton(self)
+        self.hide_image_button.setText('Show/&Hide Image')
+        self.hide_image_button.pressed.connect(self.viewer.hide_image)
 
         # Arrange layout
         MainLayout = QVBoxLayout(self)
@@ -207,6 +209,7 @@ class SegmenterWidget(QWidget):
         RightToolbar.addStretch()
         # self.gc_spinner.setFixedHeight(0)
         # RightToolbar.addWidget(self.gc_spinner)
+        RightToolbar.addWidget(self.hide_image_button)
         RightToolbar.addWidget(self.grabcut_button)
         RightToolbar.addWidget(self.save_button)
         RightToolbar.addWidget(self.clear_button)
@@ -356,10 +359,8 @@ class SegmenterWidget(QWidget):
             found = False
             while check_idx < len(self.src_paths):
                 image_name = os.path.basename(self.src_paths[check_idx])
-                print(image_name)
                 image_name, suff = os.path.splitext(image_name)
                 label_path = os.path.join(self.label_dir, image_name + '_label.png')
-                print(label_path, os.path.exists(label_path))
                 if os.path.exists(label_path):
                     found = True
                     break
@@ -391,7 +392,12 @@ class SegmenterWidget(QWidget):
             # self.gc_spinner.start()
             image = QImage_to_CVMat(QPixmap(self.src_paths[self.current_idx]).toImage())[:, :, :3]
             segmentation = QImage_to_CVMat(self.viewer.seg_image)
-            pfg, fg, bg, pbg = np.split(segmentation / 255, segmentation.shape[-1], axis=-1)
+            rescale_factor = 0.125
+            image_height, image_width = image.shape[:2]
+            image = cv2.resize(image, (int(image_width * rescale_factor), int(image_height * rescale_factor)), interpolation=cv2.INTER_NEAREST)
+            new_segmentation = cv2.resize(segmentation, (int(image_width * rescale_factor), int(image_height * rescale_factor)), interpolation=cv2.INTER_NEAREST)
+
+            pfg, fg, bg, pbg = np.split(new_segmentation / 255, segmentation.shape[-1], axis=-1)
             pbg = 1 - pbg
             has_bg = (pbg.sum() + bg.sum()) > 0
             has_fg = (pfg.sum() + fg.sum()) > 0
@@ -405,15 +411,26 @@ class SegmenterWidget(QWidget):
                 return
 
             mask = (cv2.GC_FGD * fg + cv2.GC_BGD * bg + cv2.GC_PR_FGD * pfg + cv2.GC_PR_BGD * pbg).astype(np.uint8)
-
             bgd_model = np.zeros((1, 65), np.float64)
             fgd_model = np.zeros((1, 65), np.float64)
             mask, _, _ = cv2.grabCut(image, mask, None, bgd_model, fgd_model, 2, cv2.GC_INIT_WITH_MASK)
-            pfg = np.where(mask==cv2.GC_PR_FGD, 255, 0)
-            fg = np.where(mask==cv2.GC_FGD, 255, 0)
-            bg = np.where(mask==cv2.GC_BGD, 255, 0)
-            pbg = np.where(mask==cv2.GC_PR_BGD, 0, 255)
-            new_segmentation = np.concatenate([pfg, fg, bg, pbg], axis=2).astype(np.uint8)
+            pfg = np.where(mask == cv2.GC_PR_FGD, 255, 0) + np.where(mask == cv2.GC_FGD, 255, 0)
+            # fg = np.where(mask==cv2.GC_FGD, 255, 0)
+            # bg = np.where(mask==cv2.GC_BGD, 255, 0)
+            fg = np.zeros_like(pfg)
+            bg = np.zeros_like(pfg)
+            pbg = np.zeros_like(pfg)
+            # pbg = np.where(mask == cv2.GC_PR_BGD, 0, 255) + np.where(mask == cv2.GC_BGD)
+            # new_segmentation = np.concatenate([pfg, fg, bg, pbg], axis=2).astype(np.uint8)
+            new_segmentation = cv2.resize(pfg, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+            new_segmentation = new_segmentation - segmentation[:, :, 1]
+            new_segmentation = np.concatenate([new_segmentation[:, :, np.newaxis], segmentation[:, :, 1:3]], axis=2)
+            new_segmentation = np.concatenate([new_segmentation, new_segmentation.max(axis=2, keepdims=True)], axis=2)
+            # new_segmentation = cv2.resize(new_segmentation, (image_width, image_height), interpolation=cv2.INTER_NEAREST)
+            # new_segmentation[:, :, 0] = new_segmentation[:, :, 0] - segmentation[:, :, 1]
+            # new_segmentation[:, :, 1:3] = segmentation[:, :, 1:3]
+            # new_segmentation[:, :, 3] = new_segmentation.max(axis=2)
+            # new_segmentation = np.where((segmentation[:, :, 1:2] == 255) + (segmentation[:, :, 2:3] == 255), segmentation, new_segmentation)
             tempdir = tempfile.mkdtemp()
             temp_png = os.path.join(tempdir, 'grabcut.png')
             cv2.imwrite(temp_png, new_segmentation)
@@ -457,11 +474,16 @@ class SegmenterWindow(QMainWindow):
         grabcut_action.setShortcut("Ctrl+G")
         grabcut_action.triggered.connect(self.widget.run_grabcut)
 
+        hide_action = QAction('Show/Hide Image', self)
+        hide_action.setShortcut("Shift+H")
+        hide_action.triggered.connect(self.widget.viewer.hide_image)
+
         self.file_menu.addAction(save_action)
         self.file_menu.addAction(exit_action)
         self.edit_menu.addAction(undo_action)
         self.edit_menu.addAction(redo_action)
         self.edit_menu.addAction(grabcut_action)
+        self.edit_menu.addAction(hide_action)
 
         self.setCentralWidget(self.widget)
 

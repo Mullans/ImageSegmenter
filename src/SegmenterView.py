@@ -13,6 +13,7 @@ class ImageSegmenterView(QGraphicsView):
         self.empty = True
         self._scene = QGraphicsScene(self)
         self._photo = QGraphicsPixmapItem()
+        self.image_hidden = False
         self._seglayer = QGraphicsPixmapItem()
         self._seglayer.setOpacity(0.5)
         self._scene.addItem(self._photo)
@@ -29,7 +30,7 @@ class ImageSegmenterView(QGraphicsView):
         self.start = False
         self.prev_point = None
         self.painter = None
-        self.segmenter_pen = QPen(QtCore.Qt.green, 8, QtCore.Qt.SolidLine)
+        self.segmenter_pen = QPen(QtCore.Qt.green, 30, QtCore.Qt.SolidLine)
         self.segmenter_pen.setCapStyle(QtCore.Qt.RoundCap)
         self.segmenter_pen.setJoinStyle(QtCore.Qt.RoundJoin)
         self.erase = False
@@ -195,3 +196,11 @@ class ImageSegmenterView(QGraphicsView):
 
     def set_opacity(self, value):
         self._seglayer.setOpacity(value / 100)
+
+    def hide_image(self):
+        if self.image_hidden:
+            self._photo.setOpacity(1)
+            self.image_hidden = False
+        else:
+            self._photo.setOpacity(0)
+            self.image_hidden = True
