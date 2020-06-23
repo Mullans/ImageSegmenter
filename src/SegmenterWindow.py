@@ -334,11 +334,10 @@ class SegmenterWidget(QWidget):
         # print(self.current_idx)
         if self.current_idx < len(self.src_paths):
             check_idx = self.current_idx
-            # print(check_idx)
             found = False
             while check_idx < len(self.src_paths):
                 # print(check_idx, len(self.src_paths))
-                image_name = os.path.basename(self.src_paths[current_idx])
+                image_name = os.path.basename(self.src_paths[check_idx])
                 image_name, suff = os.path.splitext(image_name)
                 label_path = os.path.join(self.label_dir, image_name + '_label.png')
                 if os.path.exists(label_path):
