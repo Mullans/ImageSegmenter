@@ -3,7 +3,7 @@
 This is a python-based segmenter tool for png and jpg images.
 
 ## To set up environment
-1. Install the Python 3.7 version of [Anaconda] for your operating system (likely the 64-bit version) (https://www.anaconda.com/distribution/#download-section)
+1. Install the Python 3.7 version of [Anaconda](https://www.anaconda.com/distribution/#download-section) for your operating system (likely the 64-bit version) 
 2. On Mac/Linux open the **Terminal** application. On Windows open **Anaconda Prompt** by typing *Anaconda* in the windows search box and selecting it from the results.
 3. Enter the following to create an Anaconda environment named Segmenter:
 ```
