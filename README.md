@@ -7,7 +7,7 @@ This is a python-based segmenter tool for png and jpg images.
 2. On Mac/Linux open the **Terminal** application. On Windows open **Anaconda Prompt** by typing *Anaconda* in the windows search box and selecting it from the results.
 3. Enter the following to create an Anaconda environment named Segmenter:
 ```
-conda create --name Segmenter -c conda-forge python=3.7 opencv=3.4.4 pyside2
+conda create --name Segmenter -c conda-forge python=3.7 opencv=3.4.4 pyside2 git
 ```
 When asked to proceed, enter `y` and press return to confirm installing the packages.
 
